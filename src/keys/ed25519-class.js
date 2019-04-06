@@ -3,9 +3,12 @@
 const multihashing = require('multihashing-async')
 const protobuf = require('protons')
 const bs58 = require('bs58')
+const nextTick = require('async/nextTick')
 
 const crypto = require('./ed25519')
 const pbm = protobuf(require('./keys.proto'))
+const keyComposer = require('crypto-key-composer')
+const randomBytes = require('../random-bytes')
 
 class Ed25519PublicKey {
   constructor (key) {
@@ -41,9 +44,11 @@ class Ed25519PublicKey {
 class Ed25519PrivateKey {
   // key       - 64 byte Uint8Array or Buffer containing private key
   // publicKey - 32 byte Uint8Array or Buffer containing public key
-  constructor (key, publicKey) {
+  // seed      - 32 byte Uint8Array or Buffer containing the __optional__ seed
+  constructor (key, publicKey, seed) {
     this._key = ensureKey(key, crypto.privateKeyLength)
     this._publicKey = ensureKey(publicKey, crypto.publicKeyLength)
+    this._seed = ensureKey(seed, 32)
   }
 
   sign (message, callback) {
@@ -97,6 +102,79 @@ class Ed25519PrivateKey {
       callback(null, bs58.encode(hash))
     })
   }
+
+  /**
+   * Exports the key into a password protected PEM format
+   *
+   * @param {string} [format] - Defaults to 'pkcs-8'.
+   * @param {string} password - The password to read the encrypted PEM
+   * @param {function(Error, KeyInfo)} callback
+   * @returns {undefined}
+   */
+  export (format, password, callback) {
+    if (typeof password === 'function') {
+      callback = password
+      password = format
+      format = 'pkcs-8'
+    }
+
+    ensure(callback)
+
+    nextTick(() => {
+      let err = null
+      let pem = null
+      try {
+        if (format === 'pkcs-8') {
+          pem = keyComposer.composePrivateKey({
+            format: 'pkcs8-pem',
+            keyAlgorithm: {
+              id: 'ed25519'
+            },
+            keyData: {
+              seed: this._seed
+            },
+            encryptionAlgorithm: {
+              keyDerivationFunc: {
+                id: 'pbkdf2',
+                iterationCount: 10000,  // The number of iterations
+                keyLength: 32, // Automatic, based on the `encryptionScheme`
+                prf: 'hmac-with-sha512'  // The pseudo-random function
+              },
+              encryptionScheme: {
+                id: 'aes256-cbc'
+              }
+            }
+          }, {password})
+        } else {
+          err = new Error(`Unknown export format '${format}'`)
+        }
+      } catch (_err) {
+        err = _err
+      }
+
+      // Leaving the RSA example here
+      // try {
+      //   const buffer = new forge.util.ByteBuffer(this.marshal())
+      //   const asn1 = forge.asn1.fromDer(buffer)
+      //   const privateKey = forge.pki.privateKeyFromAsn1(asn1)
+      //   if (format === 'pkcs-8') {
+      //     const options = {
+      //       algorithm: 'aes256',
+      //       count: 10000,
+      //       saltSize: 128 / 8,
+      //       prfAlgorithm: 'sha512'
+      //     }
+      //     pem = forge.pki.encryptRsaPrivateKey(privateKey, password, options)
+      //   } else {
+      //     err = new Error(`Unknown export format '${format}'`)
+      //   }
+      // } catch (_err) {
+      //   err = _err
+      // }
+
+      callback(err, pem)
+    })
+  }
 }
 
 function unmarshalEd25519PrivateKey (bytes, callback) {
@@ -120,20 +198,9 @@ function generateKeyPair (_bits, cb) {
     cb = _bits
   }
 
-  crypto.generateKey((err, keys) => {
-    if (err) {
-      return cb(err)
-    }
-    let privkey
-    try {
-      privkey = new Ed25519PrivateKey(keys.secretKey, keys.publicKey)
-    } catch (err) {
-      cb(err)
-      return
-    }
+  const seed = randomBytes(32)
 
-    cb(null, privkey)
-  })
+  return generateKeyPairFromSeed(seed, _bits, cb)
 }
 
 function generateKeyPairFromSeed (seed, _bits, cb) {
@@ -147,7 +214,7 @@ function generateKeyPairFromSeed (seed, _bits, cb) {
     }
     let privkey
     try {
-      privkey = new Ed25519PrivateKey(keys.secretKey, keys.publicKey)
+      privkey = new Ed25519PrivateKey(keys.secretKey, keys.publicKey, seed)
     } catch (err) {
       cb(err)
       return
@@ -155,6 +222,10 @@ function generateKeyPairFromSeed (seed, _bits, cb) {
 
     cb(null, privkey)
   })
+}
+
+function importPEM (pem, password, callback) {
+
 }
 
 function ensure (cb) {
@@ -179,5 +250,6 @@ module.exports = {
   unmarshalEd25519PrivateKey,
   unmarshalEd25519PublicKey,
   generateKeyPair,
-  generateKeyPairFromSeed
+  generateKeyPairFromSeed,
+  import: importPEM
 }

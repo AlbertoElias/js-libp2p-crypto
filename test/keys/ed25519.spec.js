@@ -126,6 +126,14 @@ describe('ed25519', function () {
     })
   })
 
+  it('exports', (done) => {
+    key.export('password', (err, pem) => {
+      console.log(pem)
+      expect(false).to.be(true)
+      done()
+    })
+  })
+
   describe('key equals', () => {
     it('equals itself', () => {
       expect(

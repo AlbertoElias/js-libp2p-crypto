@@ -196,6 +196,20 @@ function generateKeyPair (bits, callback) {
   })
 }
 
+function importPEM (pem, password, callback) {
+  try {
+    const key = forge.pki.decryptRsaPrivateKey(pem, password)
+    if (key === null) {
+      throw new Error('Cannot read the key, most likely the password is wrong or not a RSA key')
+    }
+    let der = forge.asn1.toDer(forge.pki.privateKeyToAsn1(key))
+    der = Buffer.from(der.getBytes(), 'binary')
+    return unmarshalRsaPrivateKey(der, callback)
+  } catch (err) {
+    callback(err)
+  }
+}
+
 function ensure (callback) {
   if (typeof callback !== 'function') {
     throw new Error('callback is required')
@@ -208,5 +222,6 @@ module.exports = {
   unmarshalRsaPublicKey,
   unmarshalRsaPrivateKey,
   generateKeyPair,
-  fromJwk
+  fromJwk,
+  import: importPEM
 }

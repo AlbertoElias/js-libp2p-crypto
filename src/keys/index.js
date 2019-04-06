@@ -5,7 +5,7 @@ const keysPBM = protobuf(require('./keys.proto'))
 require('node-forge/lib/asn1')
 require('node-forge/lib/rsa')
 require('node-forge/lib/pbe')
-const forge = require('node-forge/lib/forge')
+const keyComposer = require('crypto-key-composer')
 
 exports = module.exports
 
@@ -121,15 +121,14 @@ exports.marshalPrivateKey = (key, type) => {
 }
 
 exports.import = (pem, password, callback) => {
-  try {
-    const key = forge.pki.decryptRsaPrivateKey(pem, password)
-    if (key === null) {
-      throw new Error('Cannot read the key, most likely the password is wrong or not a RSA key')
-    }
-    let der = forge.asn1.toDer(forge.pki.privateKeyToAsn1(key))
-    der = Buffer.from(der.getBytes(), 'binary')
-    return supportedKeys.rsa.unmarshalRsaPrivateKey(der, callback)
-  } catch (err) {
-    callback(err)
+  const decomposedPrivateKey = keyComposer.decomposePrivateKey(pem, {password})
+  const keyType = keyComposer.getKeyTypeFromAlgorithm(decomposedPrivateKey.keyAlgorithm)
+  switch (keyType) {
+    case 'rsa':
+      return supportedKeys.rsa.import(pem, password, callback)
+    case 'ed25519':
+      return supportedKeys.ed25519.import(pem, password, callback)
+    default:
+      callback(new Error('invalid or unsupported key type'))
   }
 }

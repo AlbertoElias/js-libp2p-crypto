@@ -49,6 +49,23 @@ describe('libp2p-crypto', function () {
     })
   })
 
+  it('import', (done) => {
+    key.export('password', (err, pemKey) => {
+      if (err) {
+        return done(err)
+      }
+      crypto.keys.import(pemKey, 'password', (err, key2) => {
+        if (err) {
+          return done(err)
+        }
+
+        expect(key2.equals(key)).to.be.eql(true)
+        expect(key2.public.equals(key.public)).to.be.eql(true)
+        done()
+      })
+    })
+  })
+
   // marshalled keys seem to be slightly different
   // unsure as to if this is just a difference in encoding
   // or a bug
