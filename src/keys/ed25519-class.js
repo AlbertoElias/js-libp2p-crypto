@@ -225,7 +225,9 @@ function generateKeyPairFromSeed (seed, _bits, cb) {
 }
 
 function importPEM (pem, password, callback) {
-
+  const decomposedPrivateKey = keyComposer.decomposePrivateKey(pem, {password})
+  const seed = decomposedPrivateKey.keyData.seed
+  return generateKeyPairFromSeed(seed, callback)
 }
 
 function ensure (cb) {
@@ -239,7 +241,7 @@ function ensureKey (key, length) {
     key = new Uint8Array(key)
   }
   if (!(key instanceof Uint8Array) || key.length !== length) {
-    throw new Error('Key must be a Uint8Array or Buffer of length ' + length)
+    throw new Error('Key must be a Uint8Array or Buffer of length ' + length + `and is length ${key.length} and ${key instanceof Uint8Array}`)
   }
   return key
 }
